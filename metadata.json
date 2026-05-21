@@ -1,0 +1,6 @@
+{
+  "name": "Auto Audit",
+  "description": "An AI spend audit and optimization platform to analyze, reduce, and optimize AI tool expenses.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
