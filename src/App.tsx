@@ -28,12 +28,26 @@ import ShareableReport from './components/dashboard/ShareableReport';
 import Analytics from './components/dashboard/Analytics';
 import Settings from './components/Settings';
 import AuthPages from './components/AuthPages';
+import PublicReport from './components/dashboard/PublicReport';
+
+import { useLocalStorage } from './hooks/useLocalStorage';
 
 export default function App() {
-  const [activePage, setActivePage] = useState<string>('landing');
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
-  const [report, setReport] = useState<AuditReport>(DEFAULT_MOCK_REPORT);
+  const [activePage, setActivePage] = useLocalStorage<string>('autoaudit_active_page', 'landing');
+  const [currentUser, setCurrentUser] = useLocalStorage<string | null>('autoaudit_current_user', null);
+  const [report, setReport] = useLocalStorage<AuditReport>('autoaudit_report', DEFAULT_MOCK_REPORT);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [publicReportId, setPublicReportId] = useState<string | null>(null);
+
+  // Parse path on initial mount for routing support
+  useEffect(() => {
+    const path = window.location.pathname;
+    const match = path.match(/^\/report\/([^\/]+)/);
+    if (match) {
+      setPublicReportId(match[1]);
+      setActivePage('public-report');
+    }
+  }, []);
 
   // Auto-scroll to top on screen transition
   useEffect(() => {
@@ -310,6 +324,17 @@ export default function App() {
           {activePage === 'settings' && (
             <Settings
               onNavigateBack={() => setActivePage('results-dashboard')}
+            />
+          )}
+
+          {activePage === 'public-report' && publicReportId && (
+            <PublicReport
+              publicId={publicReportId}
+              onNavigateHome={() => {
+                window.history.pushState({}, '', '/');
+                setPublicReportId(null);
+                setActivePage('landing');
+              }}
             />
           )}
 

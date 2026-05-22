@@ -16,7 +16,7 @@ export default function ShareableReport({ report, onNavigateBack }: ShareableRep
   const [copied, setCopied] = useState(false);
   const { companyName, domainName, auditDate, currentSpendMonthly, potentialMonthlySavings, duplicateToolsCount, inactiveSeatsCount } = report;
 
-  const publicLink = `https://autoaudit.ai/reports/public-${report.id || 'acme-rockets'}`;
+  const publicLink = `${window.location.origin}/report/${report.publicId || report.id || 'acme-rockets'}`;
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(publicLink);

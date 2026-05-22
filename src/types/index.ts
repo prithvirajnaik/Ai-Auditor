@@ -53,6 +53,7 @@ export interface TeamSpendMetric {
 
 export interface AuditReport {
   id: string;
+  publicId?: string;
   companyName: string;
   domainName: string;
   auditDate: string;

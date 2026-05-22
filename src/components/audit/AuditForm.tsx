@@ -1,18 +1,24 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Trash2, PlusCircle, LayoutGrid, RotateCcw } from 'lucide-react';
+import { Sparkles, PlusCircle, RotateCcw } from 'lucide-react';
 import { SubscriptionItem } from '../../types';
-import { AI_TOOLS_PRICING, INITIAL_SPRAWL_SUBSCRIPTIONS } from '../../data/mockData';
+import { AI_TOOLS_PRICING } from '../../lib/pricing';
 import { runAuditAnalysis } from '../../lib/auditEngine';
+import ProfileForm from './ProfileForm';
+import SubscriptionCard from './SubscriptionCard';
 
 interface AuditFormProps {
   onAuditCompleted: (report: any) => void;
   onNavigateHome: () => void;
 }
+
+const DEFAULT_PRESET_SUBSCRIPTIONS: SubscriptionItem[] = [
+  { id: 'sub-preset-1', toolId: 'chatgpt', toolName: 'ChatGPT', planName: 'Plus (Individual)', department: 'Engineering', seats: 12, costPerSeat: 20, totalCost: 240, billingCycle: 'monthly', status: 'active' },
+  { id: 'sub-preset-2', toolId: 'claude', toolName: 'Claude', planName: 'Pro (Individual)', department: 'Engineering', seats: 8, costPerSeat: 20, totalCost: 160, billingCycle: 'monthly', status: 'active' },
+  { id: 'sub-preset-3', toolId: 'cursor', toolName: 'Cursor', planName: 'Pro', department: 'Engineering', seats: 10, costPerSeat: 20, totalCost: 200, billingCycle: 'monthly', status: 'active' },
+  { id: 'sub-preset-4', toolId: 'copilot', toolName: 'GitHub Copilot', planName: 'Business', department: 'Engineering', seats: 10, costPerSeat: 19, totalCost: 190, billingCycle: 'monthly', status: 'active' },
+  { id: 'sub-preset-5', toolId: 'openai_api', toolName: 'OpenAI API', planName: 'Tier 1 API Usage', department: 'Engineering', seats: 1, costPerSeat: 100, totalCost: 100, billingCycle: 'monthly', status: 'active' },
+  { id: 'sub-preset-6', toolId: 'v0', toolName: 'v0', planName: 'Pro', department: 'Product', seats: 4, costPerSeat: 20, totalCost: 80, billingCycle: 'monthly', status: 'active' }
+];
 
 export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFormProps) {
   // Global fields with LocalStorage integration
@@ -39,21 +45,17 @@ export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFor
         console.error('Failed to parse stored subscriptions', e);
       }
     }
-    return INITIAL_SPRAWL_SUBSCRIPTIONS;
+    return DEFAULT_PRESET_SUBSCRIPTIONS;
   });
 
-  // Current selected tool form states
-  const [selectedToolId, setSelectedToolId] = useState('chatgpt');
-  const [selectedPlanName, setSelectedPlanName] = useState('Plus (Individual)');
-  const [seats, setSeats] = useState(10);
-  const [customMonthlySpend, setCustomMonthlySpend] = useState<number>(20); // Unit rate per month
+  // Validation errors
+  const [errors, setErrors] = useState<{ companyName?: string; domainName?: string; teamSize?: string }>({});
 
   // Loader state
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
   const [loadingLogs, setLoadingLogs] = useState<string[]>([]);
 
-  // Storing fields on change inside localStorage
+  // LocalStorage syncing on updates
   useEffect(() => {
     localStorage.setItem('autoaudit_company_name', companyName);
   }, [companyName]);
@@ -75,114 +77,156 @@ export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFor
   }, [subscriptions]);
 
   const loadingSteps = [
-    'Analyzing subscriptions in organization pool...',
-    'Checking duplicate seat assignments and vendor overlap...',
-    'Comparing pricing tiers block-by-block with standard team packages...',
-    'Generating dynamic optimization audit report...'
+    'Initializing SaaS budget parser engine...',
+    'Scanning domain registry records and active seat telemetry...',
+    'Evaluating duplicate AI code editor configurations (Cursor vs Copilot)...',
+    'Checking chatbot capability duplication across departments...',
+    'Comparing API usage tiers against optimized semantic caching proxy profiles...',
+    'Verifying team sizing limits against total software seat counts...',
+    'Generating dynamic financial optimization audit report...'
   ];
 
-  // Auto-sync price based on selected tool/plan
-  const handleToolChange = (toolId: string) => {
-    setSelectedToolId(toolId);
-    const tool = AI_TOOLS_PRICING.find(t => t.id === toolId);
-    if (tool && tool.plans.length > 0) {
-      setSelectedPlanName(tool.plans[0].name);
-      setCustomMonthlySpend(tool.plans[0].price);
-    }
+  const handleAddCard = () => {
+    const defaultTool = AI_TOOLS_PRICING[0]; // ChatGPT
+    const defaultPlan = defaultTool.plans[0]; // Plus
+    const newSub: SubscriptionItem = {
+      id: `sub-${Math.random().toString(36).substr(2, 9)}`,
+      toolId: defaultTool.id,
+      toolName: defaultTool.name,
+      planName: defaultPlan.name,
+      department: 'Engineering',
+      seats: 5,
+      costPerSeat: defaultPlan.price,
+      totalCost: 5 * defaultPlan.price,
+      billingCycle: 'monthly',
+      status: 'active'
+    };
+    setSubscriptions([...subscriptions, newSub]);
   };
 
-  const handlePlanChange = (planName: string) => {
-    setSelectedPlanName(planName);
-    const tool = AI_TOOLS_PRICING.find(t => t.id === selectedToolId);
-    if (tool) {
-      const plan = tool.plans.find(p => p.name === planName);
-      if (plan) {
-        setCustomMonthlySpend(plan.price);
-      }
-    }
+  const handleCardChange = (idx: number, updated: SubscriptionItem) => {
+    const next = [...subscriptions];
+    next[idx] = updated;
+    setSubscriptions(next);
   };
 
-  // Reset or preset configurations
+  const handleRemoveCard = (idx: number) => {
+    setSubscriptions(subscriptions.filter((_, i) => i !== idx));
+  };
+
   const handlePresetSelect = (presetType: 'sprawl' | 'empty') => {
     if (presetType === 'sprawl') {
       setCompanyName('Acme Rockets Inc.');
       setDomainName('acme-rockets.com');
       setTeamSize(22);
       setPrimaryUseCase('Product Development');
-      setSubscriptions(INITIAL_SPRAWL_SUBSCRIPTIONS);
+      setSubscriptions(DEFAULT_PRESET_SUBSCRIPTIONS);
+      setErrors({});
     } else {
       setCompanyName('');
       setDomainName('');
       setTeamSize(10);
-      setPrimaryUseCase('General Operations');
+      setPrimaryUseCase('Mixed Usage');
       setSubscriptions([]);
+      setErrors({});
     }
   };
 
-  const handleAddSubscription = (e: React.FormEvent) => {
-    e.preventDefault();
-    const tool = AI_TOOLS_PRICING.find(t => t.id === selectedToolId);
-    if (!tool) return;
+  const validateForm = (): boolean => {
+    const newErrors: typeof errors = {};
+    
+    if (!companyName.trim()) {
+      newErrors.companyName = 'Company name is required';
+    }
+    
+    // Basic domain validation
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](?:\.[a-zA-Z]{2,})+$/;
+    if (!domainName.trim()) {
+      newErrors.domainName = 'Domain name is required';
+    } else if (!domainRegex.test(domainName.trim())) {
+      newErrors.domainName = 'Enter a valid corporate domain (e.g. startup.com)';
+    }
 
-    const newSub: SubscriptionItem = {
-      id: `sub-${Math.random().toString(36).substr(2, 9)}`,
-      toolId: selectedToolId,
-      toolName: tool.name,
-      planName: selectedPlanName,
-      department: 'Engineering', // defaulted list mapping, customizable if needed
-      seats,
-      costPerSeat: customMonthlySpend,
-      totalCost: seats * customMonthlySpend,
-      billingCycle: 'monthly',
-      status: 'active'
-    };
+    if (teamSize <= 0 || isNaN(teamSize)) {
+      newErrors.teamSize = 'Team size must be at least 1 employee';
+    }
 
-    setSubscriptions([...subscriptions, newSub]);
-  };
-
-  const handleDeleteSubscription = (id: string) => {
-    setSubscriptions(subscriptions.filter(s => s.id !== id));
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
   };
 
   const triggerAuditSubmit = () => {
+    if (!validateForm()) return;
+
     setIsLoading(true);
-    setLoadingStep(0);
     setLoadingLogs(['[system] Initializing SaaS budget parser engine...']);
 
-    let currentStepIndex = 0;
+    let stepIndex = 0;
     const interval = setInterval(() => {
-      if (currentStepIndex < loadingSteps.length) {
+      if (stepIndex < loadingSteps.length) {
         setLoadingLogs(logs => [
           ...logs,
-          `[audit-log] -> ${loadingSteps[currentStepIndex]}`,
-          `[telemetry] SUCCESS: parsed process ${currentStepIndex + 1}/${loadingSteps.length}`
+          `[audit-log] -> ${loadingSteps[stepIndex]}`,
+          `[telemetry] SUCCESS: Process completed [${stepIndex + 1}/${loadingSteps.length}]`
         ]);
-        currentStepIndex++;
-        setLoadingStep(currentStepIndex);
+        stepIndex++;
       } else {
         clearInterval(interval);
-        setTimeout(() => {
-          const finishedReport = runAuditAnalysis(
-            companyName,
-            domainName,
-            teamSize,
-            primaryUseCase,
-            subscriptions
-          );
-          onAuditCompleted(finishedReport);
-          setIsLoading(false);
+        setTimeout(async () => {
+          try {
+            const response = await fetch('/api/audits', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                company_name: companyName.trim(),
+                domain_name: domainName.trim(),
+                team_size: teamSize,
+                use_case: primaryUseCase,
+                subscriptions
+              })
+            });
+
+            if (!response.ok) {
+              throw new Error(`Server returned status ${response.status}`);
+            }
+
+            const result = await response.json();
+            if (result.success && result.report) {
+              onAuditCompleted(result.report);
+              setIsLoading(false);
+              return;
+            }
+            throw new Error('Malformed server response');
+          } catch (error) {
+            console.warn('[Backend Integration Fallback] Using local calculations engine:', error);
+            const report = runAuditAnalysis(
+              companyName.trim(),
+              domainName.trim(),
+              teamSize,
+              primaryUseCase,
+              subscriptions
+            );
+            // Inject a mock publicId for fallback compatibility
+            report.publicId = `mock-${Math.random().toString(36).substr(2, 9)}`;
+            onAuditCompleted(report);
+            setIsLoading(false);
+          }
         }, 500);
       }
-    }, 600);
+    }, 450);
   };
+
+  const totalMonthlySpend = subscriptions.reduce((sum, s) => sum + s.totalCost, 0);
 
   return (
     <div className="bg-black text-[#e5e2e1] min-h-screen py-8 px-4 sm:px-6 lg:px-8 relative selection:bg-purple-500/30">
       <div className="absolute top-[10%] right-[10%] w-[350px] h-[350px] bg-purple-500/5 rounded-full blur-[100px] pointer-events-none"></div>
 
       {isLoading ? (
-        /* Dynamic Terminal Scan Loader */
-        <div className="max-w-lg mx-auto mt-24 text-center space-y-8 animate-fade-in">
+        /* Terminal scan log view */
+        <div className="max-w-xl mx-auto mt-20 text-center space-y-8 animate-fade-in">
           <div className="relative inline-flex items-center justify-center p-0.5 bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-400 rounded-full animate-spin">
             <div className="w-14 h-14 rounded-full bg-black flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-cyan-300" />
@@ -191,10 +235,10 @@ export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFor
           
           <div className="space-y-2">
             <h3 className="text-lg font-bold text-white tracking-tight">Compiling Overlap Diagnostics</h3>
-            <p className="text-[10px] text-purple-400 tracking-widest uppercase font-mono">Running precision metrics...</p>
+            <p className="text-[10px] text-purple-400 tracking-widest uppercase font-mono">Running precision heuristics...</p>
           </div>
 
-          <div className="bg-[#090909] border border-white/5 p-5 rounded-xl text-left font-mono text-[10px] text-gray-400 space-y-2.5 max-w-md mx-auto shadow-inner">
+          <div className="bg-[#090909] border border-white/5 p-5 rounded-xl text-left font-mono text-[10px] text-gray-400 space-y-2.5 shadow-inner max-h-[350px] overflow-y-auto">
             {loadingLogs.map((log, idx) => (
               <p
                 key={idx}
@@ -216,21 +260,23 @@ export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFor
               >
                 ← Return to Platform
               </button>
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">Analyze Tooling Overlap</h1>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                Analyze Tooling Overlap
+              </h1>
             </div>
 
             <div className="flex gap-2 bg-[#090909] border border-white/5 p-1 rounded-lg">
               <button
                 type="button"
                 onClick={() => handlePresetSelect('sprawl')}
-                className="px-3 py-1.5 bg-purple-950/40 border border-purple-500/20 text-purple-300 rounded-md text-xs font-semibold hover:bg-purple-900/30"
+                className="px-3 py-1.5 bg-purple-950/40 border border-purple-500/20 text-purple-300 rounded-md text-xs font-semibold hover:bg-purple-900/30 cursor-pointer"
               >
                 Load AI Sprawl Preset
               </button>
               <button
                 type="button"
                 onClick={() => handlePresetSelect('empty')}
-                className="px-3 py-1.5 rounded-md text-xs text-gray-400 font-semibold hover:bg-white/5 flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-md text-xs text-gray-400 font-semibold hover:bg-white/5 flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Clear
@@ -238,212 +284,82 @@ export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFor
             </div>
           </div>
 
-          {/* Core Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            
-            {/* LHS Profile & Add Subscription */}
-            <div className="lg:col-span-5 space-y-6">
-              
-              {/* Profile fields */}
-              <div className="bg-[#090909] border border-white/5 rounded-2xl p-5 space-y-4">
-                <h3 className="text-xs font-bold text-white tracking-widest uppercase font-mono border-b border-white/5 pb-2">1. Profile Profile</h3>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Company Name</label>
-                    <input
-                      type="text"
-                      className="w-full bg-black border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-700 focus:border-purple-500 focus:outline-none text-xs"
-                      placeholder="My Startup"
-                      value={companyName}
-                      onChange={(e) => setCompanyName(e.target.value)}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Corporate Domain</label>
-                    <input
-                      type="text"
-                      className="w-full bg-black border border-white/10 rounded-xl px-3 py-2 text-white placeholder-gray-700 focus:border-purple-500 focus:outline-none text-xs"
-                      placeholder="domain.com"
-                      value={domainName}
-                      onChange={(e) => setDomainName(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Team Size</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="w-full bg-black border border-white/10 rounded-xl px-3 py-2 text-white focus:border-purple-500 focus:outline-none text-xs font-mono"
-                      value={teamSize}
-                      onChange={(e) => setTeamSize(Math.max(1, parseInt(e.target.value) || 1))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Primary Use Case</label>
-                    <select
-                      className="w-full bg-black border border-white/10 rounded-xl px-2 py-2 text-white focus:border-purple-500 focus:outline-none text-xs"
-                      value={primaryUseCase}
-                      onChange={(e) => setPrimaryUseCase(e.target.value)}
-                    >
-                      <option value="Product Development">Product Dev</option>
-                      <option value="Marketing & Copywriting">Marketing</option>
-                      <option value="Data Analytics">Data Analysis</option>
-                      <option value="General Administration">General Admin</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Add Tool Form */}
-              <div className="bg-[#090909] border border-white/5 rounded-2xl p-5 space-y-4">
-                <h3 className="text-xs font-bold text-white tracking-widest uppercase font-mono border-b border-white/5 pb-2">2. Append AI Subscriptions</h3>
-                
-                <form onSubmit={handleAddSubscription} className="space-y-3.5">
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Select Tool</label>
-                    <select
-                      className="w-full bg-black border border-white/10 rounded-xl px-2 py-2 text-white focus:border-purple-500 focus:outline-none text-xs"
-                      value={selectedToolId}
-                      onChange={(e) => handleToolChange(e.target.value)}
-                    >
-                      {AI_TOOLS_PRICING.map(t => (
-                        <option key={t.id} value={t.id}>{t.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Plan Tier</label>
-                      <select
-                        className="w-full bg-black border border-white/10 rounded-xl px-2 py-2 text-white focus:border-purple-500 focus:outline-none text-xs"
-                        value={selectedPlanName}
-                        onChange={(e) => handlePlanChange(e.target.value)}
-                      >
-                        {AI_TOOLS_PRICING.find(t => t.id === selectedToolId)?.plans.map(p => (
-                          <option key={p.name} value={p.name}>{p.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1 text-right">Cost Per Seat /mo</label>
-                      <input
-                        type="number"
-                        min="1"
-                        className="w-full bg-black border border-white/10 rounded-xl px-3 py-2 text-white text-right font-mono text-xs"
-                        value={customMonthlySpend}
-                        onChange={(e) => setCustomMonthlySpend(Math.max(1, parseInt(e.target.value) || 1))}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase mb-1">Allocated Seat Count</label>
-                    <input
-                      type="number"
-                      min="1"
-                      className="w-full bg-black border border-white/10 rounded-xl px-3 py-2 text-white font-mono text-xs"
-                      value={seats}
-                      onChange={(e) => setSeats(Math.max(1, parseInt(e.target.value) || 1))}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full bg-white/[0.03] hover:bg-white/[0.08] text-white border border-white/10 py-3 rounded-xl text-[10px] font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all text-center cursor-pointer"
-                  >
-                    <PlusCircle className="w-4 h-4 text-cyan-300" />
-                    Add subscription seat
-                  </button>
-                </form>
-              </div>
-
+            {/* Left Column Profile */}
+            <div className="lg:col-span-4">
+              <ProfileForm
+                companyName={companyName}
+                setCompanyName={setCompanyName}
+                domainName={domainName}
+                setDomainName={setDomainName}
+                teamSize={teamSize}
+                setTeamSize={setTeamSize}
+                primaryUseCase={primaryUseCase}
+                setPrimaryUseCase={setPrimaryUseCase}
+                errors={errors}
+              />
             </div>
 
-            {/* RHS Active Sprawl List Map */}
-            <div className="lg:col-span-7 space-y-4">
-              <div className="bg-[#090909] border border-white/5 rounded-2xl p-5 sm:p-6 space-y-6 shadow-2xl">
+            {/* Right Column Subscriptions */}
+            <div className="lg:col-span-8 space-y-6">
+              <div className="bg-[#090909] border border-white/5 p-5 sm:p-6 rounded-2xl space-y-6 shadow-2xl">
                 <div className="flex justify-between items-center border-b border-white/5 pb-3">
-                  <h3 className="text-xs font-bold text-purple-300 tracking-widest uppercase font-mono">Mapped Core Sprawl List</h3>
-                  <span className="font-mono text-[10px] text-gray-500">{subscriptions.length} records registered</span>
+                  <h3 className="text-xs font-bold text-purple-300 tracking-widest uppercase font-mono">
+                    Active AI Tool Cards
+                  </h3>
+                  <span className="font-mono text-[10px] text-gray-500">
+                    {subscriptions.length} items declared
+                  </span>
                 </div>
 
                 {subscriptions.length === 0 ? (
                   <div className="text-center py-16 text-gray-600 space-y-3 font-sans border border-dashed border-white/5 rounded-xl">
-                    <LayoutGrid className="w-8 h-8 mx-auto text-gray-700" />
-                    <p className="text-xs">No subscriptions registered. Load a preset or configure seats above to proceed.</p>
+                    <p className="text-xs">No active tool subscriptions declared. Add a tool card below to start.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-[11px] text-gray-400 font-sans">
-                        <thead>
-                          <tr className="border-b border-white/5 text-[9px] text-gray-500 uppercase tracking-wider font-mono">
-                            <th className="pb-2">Tool &amp; Plan</th>
-                            <th className="pb-2 text-center">Seats</th>
-                            <th className="pb-2 text-right">Rate</th>
-                            <th className="pb-2 text-right">Combined /mo</th>
-                            <th className="pb-2 text-center">Prune</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {subscriptions.map(sub => (
-                            <tr key={sub.id} className="hover:bg-white/[0.01]">
-                               <td className="py-3">
-                                 <div className="flex items-center gap-2">
-                                   <span className="text-sm">
-                                     {AI_TOOLS_PRICING.find(t => t.id === sub.toolId)?.logo || '💡'}
-                                   </span>
-                                   <div>
-                                     <p className="font-bold text-white text-xs">{sub.toolName}</p>
-                                     <p className="text-[10px] text-purple-300 font-mono">{sub.planName}</p>
-                                   </div>
-                                 </div>
-                               </td>
-                               <td className="py-3 text-center font-mono text-white font-bold">{sub.seats}</td>
-                               <td className="py-3 text-right font-mono">${sub.costPerSeat}</td>
-                               <td className="py-3 text-right font-mono font-bold text-cyan-400">${sub.totalCost}</td>
-                               <td className="py-3 text-center">
-                                 <button
-                                   type="button"
-                                   onClick={() => handleDeleteSubscription(sub.id)}
-                                   className="text-gray-500 hover:text-rose-400 p-1 rounded hover:bg-white/5 transition-colors cursor-pointer"
-                                 >
-                                   <Trash2 className="w-3.5 h-3.5" />
-                                 </button>
-                               </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div className="pt-4 border-t border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                      <div>
-                        <p className="text-[9px] text-gray-500 font-mono tracking-wider uppercase">AGGREGATE MONTHLY OVERHEAD</p>
-                        <p className="text-2xl font-bold font-mono text-rose-400">
-                          ${subscriptions.reduce((sum, s) => sum + s.totalCost, 0).toLocaleString()}
-                          <span className="text-xs font-normal text-gray-500 font-sans">/mo</span>
-                        </p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={triggerAuditSubmit}
-                        className="w-full sm:w-auto bg-gradient-to-r from-purple-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.25)] text-white px-6 py-3.5 rounded-xl font-bold transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer text-xs"
-                      >
-                        Evaluate Stack Integrity
-                        <Sparkles className="w-4 h-4 text-cyan-300" />
-                      </button>
-                    </div>
-
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {subscriptions.map((sub, idx) => (
+                      <SubscriptionCard
+                        key={sub.id}
+                        subscription={sub}
+                        onChange={(updated) => handleCardChange(idx, updated)}
+                        onRemove={() => handleRemoveCard(idx)}
+                      />
+                    ))}
                   </div>
                 )}
+
+                {/* Card controls */}
+                <div className="pt-4 border-t border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={handleAddCard}
+                    className="w-full sm:w-auto bg-white/[0.03] hover:bg-white/[0.08] text-white border border-white/10 px-5 py-3 rounded-xl text-xs font-mono font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all text-center cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4 text-cyan-300" />
+                    Add Subscription Card
+                  </button>
+
+                  <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                    <div className="text-right">
+                      <p className="text-[9px] text-gray-500 font-mono tracking-wider uppercase">combined monthly spend</p>
+                      <p className="text-xl font-bold font-mono text-rose-400">
+                        ${totalMonthlySpend.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={triggerAuditSubmit}
+                      className="bg-gradient-to-r from-purple-600 to-cyan-500 hover:shadow-[0_0_20px_rgba(139,92,246,0.25)] text-white px-6 py-3.5 rounded-xl font-bold transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer text-xs"
+                    >
+                      Run Precision Audit
+                      <Sparkles className="w-4 h-4 text-cyan-300" />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-
           </div>
         </div>
       )}

@@ -1,24 +1,23 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import React, { useState } from 'react';
 import {
   Sparkles,
   Zap,
-  CheckCircle,
   AlertTriangle,
-  ArrowUpRight,
-  TrendingDown,
   Layers,
   Users,
-  Eye,
-  Settings as SettingsIcon,
-  Share2
+  Share2,
+  Mail
 } from 'lucide-react';
-import { AuditReport, Recommendation } from '../../types';
-import { AI_TOOLS_PRICING } from '../../data/mockData';
+import { AuditReport } from '../../types';
+import RecommendationCard from './RecommendationCard';
+import LeadCaptureForm from './LeadCaptureForm';
+import {
+  calculateTotalSpend,
+  groupSpendByDepartment,
+  applyRecommendationsToSubscriptions,
+  calculateInactiveSeats,
+  calculateDuplicateTools
+} from '../../lib/calculations';
 
 interface DashboardProps {
   report: AuditReport;
@@ -28,15 +27,14 @@ interface DashboardProps {
 
 export default function Dashboard({ report, onNavigate, onUpdateReport }: DashboardProps) {
   const [fixedAllApplied, setFixedAllApplied] = useState(false);
+  const [showLeadCapture, setShowLeadCapture] = useState(false);
 
   const {
     companyName,
     domainName,
-    auditDate,
     teamSize,
     primaryUseCase,
     currentSpendMonthly,
-    optimizedSpendMonthly,
     potentialMonthlySavings,
     potentialAnnualSavings,
     duplicateToolsCount,
@@ -46,7 +44,33 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
     aiSummary
   } = report;
 
-  // Handles applying a recommendation, correcting calculations dynamically
+  // Calculates optimized spends and savings based on applied items to avoid drift
+  const updateReportMetrics = (updatedRecs: typeof recommendations) => {
+    const originalSpend = calculateTotalSpend(subscriptionsAnalyzed);
+    const optimizedSubscriptions = applyRecommendationsToSubscriptions(subscriptionsAnalyzed, updatedRecs);
+    
+    const currentSpend = calculateTotalSpend(optimizedSubscriptions);
+    const duplicateTools = calculateDuplicateTools(optimizedSubscriptions);
+    const inactiveSeats = calculateInactiveSeats(optimizedSubscriptions, teamSize);
+    const currentTeamMetrics = groupSpendByDepartment(optimizedSubscriptions);
+
+    const totalPossibleSavings = updatedRecs.reduce((sum, r) => sum + r.estimatedMonthlySavings, 0);
+    const appliedSavings = updatedRecs.filter(r => r.status === 'applied').reduce((sum, r) => sum + r.estimatedMonthlySavings, 0);
+    const remainingPotentialSavings = Math.max(0, totalPossibleSavings - appliedSavings);
+
+    onUpdateReport({
+      ...report,
+      currentSpendMonthly: currentSpend,
+      potentialMonthlySavings: remainingPotentialSavings,
+      potentialAnnualSavings: remainingPotentialSavings * 12,
+      duplicateToolsCount: duplicateTools,
+      inactiveSeatsCount: inactiveSeats,
+      teamMetrics: currentTeamMetrics,
+      recommendations: updatedRecs
+    });
+  };
+
+
   const handleApplyRecommendation = (recId: string) => {
     const updatedRecommendations = recommendations.map(rec => {
       if (rec.id === recId) {
@@ -55,21 +79,7 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
       return rec;
     });
 
-    const targetRec = recommendations.find(r => r.id === recId);
-    if (!targetRec || targetRec.status === 'applied') return;
-
-    // Deduct savings from current spend
-    const newOptimizedSpend = Math.max(100, optimizedSpendMonthly - targetRec.estimatedMonthlySavings);
-    const newMonthlySavings = currentSpendMonthly - newOptimizedSpend;
-    const newAnnualSavings = newMonthlySavings * 12;
-
-    onUpdateReport({
-      ...report,
-      optimizedSpendMonthly: newOptimizedSpend,
-      potentialMonthlySavings: newMonthlySavings,
-      potentialAnnualSavings: newAnnualSavings,
-      recommendations: updatedRecommendations
-    });
+    updateReportMetrics(updatedRecommendations);
   };
 
   const handleFixAllAutomagically = () => {
@@ -81,22 +91,14 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
       status: 'applied' as const
     }));
 
-    const unsolvedSavings = recommendations
-      .filter(r => r.status === 'pending')
-      .reduce((sum, r) => sum + r.estimatedMonthlySavings, 0);
-
-    const newOptimizedSpend = Math.max(100, optimizedSpendMonthly - unsolvedSavings);
-    const newMonthlySavings = currentSpendMonthly - newOptimizedSpend;
-    const newAnnualSavings = newMonthlySavings * 12;
-
-    onUpdateReport({
-      ...report,
-      optimizedSpendMonthly: newOptimizedSpend,
-      potentialMonthlySavings: newMonthlySavings,
-      potentialAnnualSavings: newAnnualSavings,
-      recommendations: updatedRecommendations
-    });
+    updateReportMetrics(updatedRecommendations);
   };
+
+  const pendingRecommendations = recommendations.filter(r => r.status === 'pending');
+  const healthPercent = Math.max(
+    0,
+    Math.round(((currentSpendMonthly - potentialMonthlySavings) / (currentSpendMonthly || 1)) * 100)
+  );
 
   return (
     <div className="bg-black text-[#e5e2e1] min-h-screen flex flex-col font-sans selection:bg-purple-500/30">
@@ -106,7 +108,7 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
         <div className="bg-rose-950/20 border-b border-rose-500/15 px-6 py-2.5 text-xs tracking-wide text-rose-400 md:flex items-center justify-between gap-4 font-mono">
           <div className="flex items-center gap-1.5">
             <AlertTriangle className="w-4 h-4 text-rose-500 animate-pulse" />
-            <span>BUDGET LEAK REPORT: {companyName.toUpperCase()} IS OVERSPENDING BY {Math.round((potentialMonthlySavings / currentSpendMonthly) * 100)}%</span>
+            <span>BUDGET LEAK REPORT: {companyName.toUpperCase()} IS OVERSPENDING BY {Math.round((potentialMonthlySavings / (currentSpendMonthly || 1)) * 100)}%</span>
           </div>
           <span className="hidden md:inline text-gray-500">POTENTIAL RECLAIM: ${potentialMonthlySavings}/MO</span>
         </div>
@@ -120,11 +122,18 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
             <span className="font-mono text-[10px] text-purple-400 uppercase tracking-widest font-bold">WORKSPACE PROFILE</span>
             <h2 className="text-2xl font-extrabold text-white tracking-tight">{companyName} Scorecard</h2>
             <p className="text-xs text-gray-400">
-              Domain: <span className="text-purple-300 font-mono">{domainName}</span> | Size: <span className="text-purple-300 font-mono">{teamSize} seats</span> | Use Case: <span className="text-purple-300 font-sans">{primaryUseCase}</span>
+              Domain: <span className="text-purple-300 font-mono">{domainName}</span> | Size: <span className="text-purple-300 font-mono">{teamSize} seats</span> | Use Case: <span className="text-purple-300">{primaryUseCase}</span>
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2.5">
+            <button
+              onClick={() => setShowLeadCapture(true)}
+              className="px-4 py-2 bg-[#6d28d9]/20 hover:bg-[#6d28d9]/35 border border-[#6d28d9]/40 text-purple-200 rounded-xl text-xs font-semibold tracking-wider font-mono flex items-center gap-1.5 cursor-pointer leading-5"
+            >
+              <Mail className="w-3.5 h-3.5 text-purple-300" />
+              Get PDF Report
+            </button>
             <button
               onClick={() => onNavigate('analytics')}
               className="px-4 py-2 bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 text-gray-300 rounded-xl text-xs font-semibold tracking-wider font-mono flex items-center gap-1.5 cursor-pointer leading-5"
@@ -141,23 +150,21 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
             </button>
             <button
               onClick={handleFixAllAutomagically}
-              disabled={fixedAllApplied}
+              disabled={fixedAllApplied || pendingRecommendations.length === 0}
               className={`px-4 py-2 text-black rounded-xl text-xs font-bold font-mono uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                fixedAllApplied
+                fixedAllApplied || pendingRecommendations.length === 0
                   ? 'bg-emerald-400 cursor-not-allowed shadow-[0_0_10px_rgba(16,185,129,0.2)]'
                   : 'bg-gradient-to-r from-purple-300 to-cyan-300 hover:scale-[1.01]'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5" />
-              {fixedAllApplied ? '✓ Fixed' : 'Auto Fix All'}
+              {fixedAllApplied || pendingRecommendations.length === 0 ? '✓ Fixed' : 'Auto Fix All'}
             </button>
           </div>
         </div>
 
-        {/* 1. Realistic metrics cards */}
+        {/* 1. Metrics Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          
-          {/* Monthly Spend */}
           <div className="bg-[#090909]/85 border border-white/5 p-4 rounded-xl flex flex-col justify-between">
             <p className="text-[10px] font-mono tracking-widest text-gray-500 uppercase">MONTHLY SPEND</p>
             <div className="mt-3">
@@ -166,16 +173,14 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
             </div>
           </div>
 
-          {/* Annual Spend */}
           <div className="bg-[#090909]/85 border border-white/5 p-4 rounded-xl flex flex-col justify-between">
             <p className="text-[10px] font-mono tracking-widest text-gray-500 uppercase">ANNUAL SPEND</p>
             <div className="mt-3">
               <p className="text-2xl font-extrabold font-mono text-white">${(currentSpendMonthly * 12).toLocaleString()}</p>
-              <p className="text-[10px] text-gray-500 font-sans mt-0.5">Unoptimized forecast mapping</p>
+              <p className="text-[10px] text-gray-500 font-sans mt-0.5">Unoptimized forecast</p>
             </div>
           </div>
 
-          {/* Potential Savings */}
           <div className="bg-[#090909]/85 border border-rose-500/15 p-4 rounded-xl flex flex-col justify-between relative overflow-hidden">
             <div className="absolute top-0 right-0 w-16 h-16 bg-rose-500/5 rounded-full blur-xl pointer-events-none"></div>
             <p className="text-[10px] font-mono tracking-widest text-rose-400 uppercase font-black">POTENTIAL SAVINGS</p>
@@ -185,30 +190,41 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
             </div>
           </div>
 
-          {/* Duplicate Tools Detected */}
           <div className="bg-[#090909]/85 border border-white/5 p-4 rounded-xl flex flex-col justify-between">
-            <p className="text-[10px] font-mono tracking-widest text-gray-500 uppercase">DUPLICATE TOOLS DETECTED</p>
+            <p className="text-[10px] font-mono tracking-widest text-gray-500 uppercase">DUPLICATES DETECTED</p>
             <div className="mt-3 flex items-end justify-between">
               <div>
                 <p className="text-2xl font-extrabold font-mono text-white">{duplicateToolsCount}</p>
-                <p className="text-[10px] text-gray-500 font-sans mt-0.5">Overlapping capabilities</p>
+                <p className="text-[10px] text-gray-500 font-sans mt-0.5">Overlapping functions</p>
               </div>
               <Layers className="w-5 h-5 text-purple-400 opacity-60 mb-1" />
             </div>
           </div>
 
-          {/* Inactive Seats Detected */}
           <div className="bg-[#090909]/85 border border-white/5 p-4 rounded-xl flex flex-col justify-between">
-            <p className="text-[10px] font-mono tracking-widest text-gray-500 uppercase">INACTIVE SEATS DETECTED</p>
+            <p className="text-[10px] font-mono tracking-widest text-gray-500 uppercase">INACTIVE SEATS</p>
             <div className="mt-3 flex items-end justify-between">
               <div>
                 <p className="text-2xl font-extrabold font-mono text-white">{inactiveSeatsCount}</p>
-                <p className="text-[10px] text-gray-500 font-sans mt-0.5">Ghost / idle allocations</p>
+                <p className="text-[10px] text-gray-500 font-sans mt-0.5">Ghost / idle seats</p>
               </div>
               <Users className="w-5 h-5 text-cyan-400 opacity-60 mb-1" />
             </div>
           </div>
+        </div>
 
+        {/* Health Progress Bar */}
+        <div className="bg-[#090909] border border-white/5 p-5 rounded-2xl space-y-2">
+          <div className="flex justify-between items-center text-xs font-mono">
+            <span className="text-gray-400 uppercase tracking-widest">SaaS Spend Efficiency</span>
+            <span className="text-cyan-300 font-bold">{healthPercent}% Efficiency Rate</span>
+          </div>
+          <div className="h-2 w-full bg-black border border-white/5 rounded-full overflow-hidden flex items-center p-0.5">
+            <div
+              className="h-full bg-gradient-to-r from-purple-500 via-blue-500 to-cyan-400 rounded-full transition-all duration-700"
+              style={{ width: `${healthPercent}%` }}
+            ></div>
+          </div>
         </div>
 
         {/* 2. Audit recommendations list & AI summary */}
@@ -219,82 +235,23 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
             <div className="flex justify-between items-center border-b border-white/5 pb-3">
               <h3 className="text-xs font-bold text-white tracking-widest uppercase font-mono">MVP Audit Recommendations</h3>
               <span className="text-[10px] text-gray-500">
-                {recommendations.filter(r => r.status === 'pending').length} pending actions
+                {pendingRecommendations.length} pending actions
               </span>
             </div>
 
-            <div className="space-y-4">
-              {recommendations.map(rec => {
-                const isApplied = rec.status === 'applied';
-                return (
-                  <div
+            {recommendations.length === 0 ? (
+              <p className="text-xs text-gray-500 italic py-4">No audit recommendations generated.</p>
+            ) : (
+              <div className="space-y-4">
+                {recommendations.map(rec => (
+                  <RecommendationCard
                     key={rec.id}
-                    className={`border rounded-xl p-5 space-y-4 transition-all ${
-                      isApplied
-                        ? 'bg-[#040906] border-emerald-500/10 opacity-75'
-                        : 'bg-black border-white/5 hover:border-purple-500/20'
-                    }`}
-                  >
-                    {/* Header line of Card */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start gap-2">
-                      <div className="space-y-1 py-0.5">
-                        <span className={`inline-block px-1.5 py-0.5 font-mono text-[9px] uppercase font-bold rounded ${
-                          isApplied ? 'bg-emerald-500/10 text-emerald-400' : 'bg-purple-500/10 text-purple-300'
-                        }`}>
-                          {rec.type.replace('_', ' ')}
-                        </span>
-                        <h4 className="font-extrabold text-white text-sm sm:text-base tracking-tight">{rec.title}</h4>
-                      </div>
-
-                      <div className="text-left sm:text-right font-mono text-xs whitespace-nowrap">
-                        <p className={`${isApplied ? 'text-emerald-400 font-bold' : 'text-rose-400 font-semibold'}`}>
-                          {isApplied ? '✓ Applied Savings' : `+ $${rec.estimatedMonthlySavings}/mo saved`}
-                        </p>
-                        {!isApplied && (
-                          <p className="text-[10px] text-gray-500">Estimated ${rec.estimatedAnnualSavings}/yr savings</p>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Detailed Properties */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-y border-white/5 py-3 text-xs leading-normal">
-                      <div>
-                        <p className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">CURRENT SPEND</p>
-                        <p className="font-mono text-white mt-0.5">${rec.currentSpend}/mo</p>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <p className="text-[9px] text-gray-500 font-mono uppercase tracking-wider">RECOMMENDED ACTION</p>
-                        <p className="text-gray-300 mt-0.5">{rec.recommendedAction}</p>
-                      </div>
-                    </div>
-
-                    {/* Reasoning Description */}
-                    <div className="space-y-2">
-                      <p className="text-xs text-gray-400 leading-relaxed font-sans">{rec.description}</p>
-                      
-                      <div className="p-3 bg-white/[0.01] border border-white/5 rounded-lg text-[11px] leading-relaxed text-gray-500">
-                        <span className="font-mono text-[9px] text-purple-400 uppercase tracking-wider font-bold block mb-1">FINANCE REASONING</span>
-                        {rec.reasoning}
-                      </div>
-                    </div>
-
-                    {/* Action button */}
-                    {!isApplied && (
-                      <div className="pt-2 flex justify-start">
-                        <button
-                          type="button"
-                          onClick={() => handleApplyRecommendation(rec.id)}
-                          className="bg-purple-950/45 hover:bg-purple-900/40 border border-purple-500/20 hover:border-purple-500/50 text-purple-300 px-4 py-2 rounded-xl text-[10px] font-mono font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 focus:outline-none"
-                        >
-                          <Zap className="w-3 h-3 text-cyan-300" />
-                          Apply Recommendation
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    recommendation={rec}
+                    onApply={handleApplyRecommendation}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* AI summaries Column */}
@@ -309,7 +266,7 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
                 <h3 className="text-xs font-bold text-white tracking-widest uppercase font-mono">Audit Summary</h3>
               </div>
 
-              <p className="text-xs text-gray-300 leading-relaxed font-sans">
+              <p className="text-xs text-gray-300 leading-relaxed font-sans font-medium">
                 {aiSummary}
               </p>
 
@@ -319,11 +276,11 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
                 </p>
                 <div className="flex gap-4 border-t border-white/5 pt-3 text-xs leading-none">
                   <div>
-                    <h5 className="text-[9px] text-gray-500 font-mono tracking-wider uppercase">DEDUPLICATION STATE</h5>
+                    <h5 className="text-[9px] text-gray-500 font-mono tracking-wider uppercase">DEDUPLICATION</h5>
                     <p className="text-[11px] font-semibold text-white mt-1">Available</p>
                   </div>
                   <div>
-                    <h5 className="text-[9px] text-gray-500 font-mono tracking-wider uppercase">SECURITY RISK</h5>
+                    <h5 className="text-[9px] text-gray-500 font-mono tracking-wider uppercase">RISK STATE</h5>
                     <p className="text-[11px] font-semibold text-rose-400 mt-1">Fragmented SaaS</p>
                   </div>
                 </div>
@@ -332,19 +289,25 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
 
             {/* Platform statistics summary */}
             <div className="bg-[#090909] border border-white/5 p-5 rounded-2xl space-y-4">
-              <h3 className="text-xs font-bold text-white tracking-widest uppercase font-mono">Platform Allocations</h3>
+              <h3 className="text-xs font-bold text-white tracking-widest uppercase font-mono">Active Declared Stacks</h3>
               
               <div className="space-y-3.5">
                 {subscriptionsAnalyzed.length === 0 ? (
-                  <p className="text-xs text-gray-500 italic">No allocations mapped yet</p>
+                  <p className="text-xs text-gray-500 italic">No allocations declared</p>
                 ) : (
-                  subscriptionsAnalyzed.slice(0, 5).map(sub => (
+                  applyRecommendationsToSubscriptions(subscriptionsAnalyzed, recommendations).map(sub => (
                     <div key={sub.id} className="flex justify-between items-center text-xs">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-white">{sub.toolName}</span>
-                        <span className="text-[10px] text-purple-300 font-mono">{sub.planName}</span>
+                        <span className={`font-semibold ${sub.status === 'inactive' ? 'text-gray-600 line-through' : 'text-white'}`}>
+                          {sub.toolName}
+                        </span>
+                        <span className="text-[10px] text-purple-300 font-mono">
+                          {sub.status === 'inactive' ? 'Decommissioned' : `${sub.planName} (${sub.seats} seats)`}
+                        </span>
                       </div>
-                      <span className="font-mono text-gray-400 font-bold">${sub.totalCost}/mo</span>
+                      <span className="font-mono text-gray-400 font-bold">
+                        {sub.status === 'inactive' ? '$0' : `$${sub.totalCost}`}/mo
+                      </span>
                     </div>
                   ))
                 )}
@@ -357,6 +320,14 @@ export default function Dashboard({ report, onNavigate, onUpdateReport }: Dashbo
 
       </div>
 
+      {showLeadCapture && (
+        <LeadCaptureForm
+          auditId={report.publicId || report.id}
+          companyName={companyName}
+          teamSize={teamSize}
+          onClose={() => setShowLeadCapture(false)}
+        />
+      )}
     </div>
   );
 }
