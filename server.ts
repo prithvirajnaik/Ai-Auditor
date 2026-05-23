@@ -1,12 +1,9 @@
+import 'dotenv/config';
 import express from 'express';
-import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-
-// Load environment variables
-dotenv.config();
 
 // Imports from services and libraries
 import { runAuditAnalysis } from './src/lib/auditEngine';
