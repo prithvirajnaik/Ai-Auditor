@@ -1,10 +1,13 @@
 import { Resend } from 'resend';
 
-const resendApiKey = process.env.RESEND_API_KEY || '';
-
-export const isResendConfigured = !!(resendApiKey && resendApiKey !== 'MY_RESEND_API_KEY');
-
-const resend = isResendConfigured ? new Resend(resendApiKey) : null;
+/**
+ * Dynamically retrieves the Resend client based on the current environment variables.
+ */
+export function getResendClient() {
+  const resendApiKey = process.env.RESEND_API_KEY || '';
+  const isConfigured = !!(resendApiKey && resendApiKey !== 'MY_RESEND_API_KEY');
+  return isConfigured ? new Resend(resendApiKey) : null;
+}
 
 /**
  * Dispatches an audit notification email to the captured lead.
@@ -17,6 +20,7 @@ export async function sendLeadConfirmationEmail(
   aiSummary: string,
   reportUrl: string
 ): Promise<boolean> {
+  const client = getResendClient();
   const from = 'Auto Audit <onboarding@resend.dev>';
   const subject = `AI Spend Audit Report for ${companyName}`;
   const htmlContent = `
@@ -52,7 +56,7 @@ export async function sendLeadConfirmationEmail(
     </div>
   `;
 
-  if (!isResendConfigured) {
+  if (!client) {
     console.log('\n[Email Logger Fallback] Resend API Key is missing. Printing transactional email:');
     console.log('--------------------------------------------------');
     console.log(`TO:      ${toEmail}`);
@@ -65,7 +69,7 @@ export async function sendLeadConfirmationEmail(
   }
 
   try {
-    const { data, error } = await resend!.emails.send({
+    const { data, error } = await client.emails.send({
       from,
       to: [toEmail],
       subject,

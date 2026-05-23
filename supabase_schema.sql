@@ -32,3 +32,39 @@ CREATE TABLE IF NOT EXISTS leads (
 -- Indexing for speed optimization on public lookups
 CREATE INDEX IF NOT EXISTS idx_audits_public_id ON audits(public_id);
 CREATE INDEX IF NOT EXISTS idx_leads_email ON leads(email);
+
+-- ==========================================
+-- ROW LEVEL SECURITY (RLS) POLICIES
+-- ==========================================
+
+-- Enable Row Level Security
+ALTER TABLE audits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if they already exist
+DROP POLICY IF EXISTS "Allow public insert to audits" ON audits;
+DROP POLICY IF EXISTS "Allow public select from audits" ON audits;
+DROP POLICY IF EXISTS "Allow public insert to leads" ON leads;
+DROP POLICY IF EXISTS "Allow public select from leads" ON leads;
+
+-- Audits Table RLS Policies
+-- Allow anyone (including anonymous clients) to run audits and save them
+CREATE POLICY "Allow public insert to audits" ON audits
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (true);
+
+-- Allow anyone to fetch audits by their public_id (for shared reports)
+CREATE POLICY "Allow public select from audits" ON audits
+  FOR SELECT TO anon, authenticated
+  USING (true);
+
+-- Leads Table RLS Policies
+-- Allow anyone to submit leads
+CREATE POLICY "Allow public insert to leads" ON leads
+  FOR INSERT TO anon, authenticated
+  WITH CHECK (true);
+
+-- Allow public selection of leads for the onboarding flow
+CREATE POLICY "Allow public select from leads" ON leads
+  FOR SELECT TO anon, authenticated
+  USING (true);

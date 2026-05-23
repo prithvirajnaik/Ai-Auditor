@@ -285,8 +285,8 @@ export function runAuditAnalysis(
   }
 
   // Calculate dynamic totals based on the original report
-  const optimizedSpendMonthly = calculateOptimizedSpend(currentSpendMonthly, recommendations);
-  const potentialMonthlySavings = Math.max(0, currentSpendMonthly - optimizedSpendMonthly);
+  const potentialMonthlySavings = recommendations.reduce((sum, r) => sum + r.estimatedMonthlySavings, 0);
+  const optimizedSpendMonthly = Math.max(0, currentSpendMonthly - potentialMonthlySavings);
   const potentialAnnualSavings = potentialMonthlySavings * 12;
 
   // Build AI Summary dynamically

@@ -272,6 +272,91 @@ async function startServer() {
     }
   });
 
+  // Helper for dynamic OpenGraph metadata injection in shared reports
+  function injectMetaTags(template: string, audit: any, url: string): string {
+    const companyName = 'Anonymous Startup';
+    const monthlySavings = Number(audit.monthly_savings || 0);
+    const annualSavings = Number(audit.annual_savings || 0);
+    
+    const results = audit.audit_results || {};
+    const recs = results.recommendations || [];
+    const monthlySpendOpt = Number(results.optimizedSpendMonthly || 0);
+    const currentSpend = monthlySavings + monthlySpendOpt;
+    
+    const duplicateTools = recs.filter((r: any) => r.type === 'remove_redundant' || r.type === 'consolidate').length;
+    const ghostSeats = recs.filter((r: any) => r.title.toLowerCase().includes('ghost') || r.title.toLowerCase().includes('idle')).reduce((sum: number, r: any) => {
+      const match = r.description.match(/(\d+)\s+idle/i) || r.description.match(/(\d+)\s+inactive/i) || r.description.match(/estimate\s+at\s+least\s+(\d+)\s+inactive/i);
+      return sum + (match ? parseInt(match[1]) : 0);
+    }, 0) || Number(audit.team_size > 0 ? Math.max(0, Math.round(audit.team_size * 0.3)) : 0);
+
+    const title = `AI Spend Audit for ${companyName}`;
+    const description = `Monthly Spend: $${currentSpend.toLocaleString()} | Potential Savings: $${monthlySavings.toLocaleString()}/mo ($${annualSavings.toLocaleString()}/yr). Duplicate Tools: ${duplicateTools}. Ghost Seats: ${ghostSeats}.`;
+    const imageUrl = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=600&q=80";
+
+    const metaTags = `
+      <title>${title}</title>
+      <meta name="description" content="${description}" />
+      <meta property="og:title" content="${title}" />
+      <meta property="og:description" content="${description}" />
+      <meta property="og:image" content="${imageUrl}" />
+      <meta property="og:url" content="${url}" />
+      <meta property="og:type" content="website" />
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content="${title}" />
+      <meta name="twitter:description" content="${description}" />
+      <meta name="twitter:image" content="${imageUrl}" />
+    `;
+
+    // Remove existing title tag if present
+    const cleanTemplate = template.replace(/<title>.*?<\/title>/gi, '');
+    
+    // Inject tags right after <head>
+    return cleanTemplate.replace(/<head>/i, `<head>${metaTags}`);
+  }
+
+  let viteInstance: any = null;
+
+  // Intercept public report requests for social crawlers and previews
+  app.get('/report/:publicId', async (req, res, next) => {
+    try {
+      const { publicId } = req.params;
+      const audit = await getAuditByPublicId(publicId);
+      
+      if (!audit) {
+        return next(); // Fall through to standard client-side routing and 404
+      }
+
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const requestUrl = `${protocol}://${req.headers.host}${req.originalUrl}`;
+
+      let templatePath = '';
+      if (process.env.NODE_ENV === 'production') {
+        templatePath = path.resolve(__dirname, 'dist', 'index.html');
+      } else {
+        templatePath = path.resolve(__dirname, 'index.html');
+      }
+
+      if (!fs.existsSync(templatePath)) {
+        return next();
+      }
+
+      let html = fs.readFileSync(templatePath, 'utf-8');
+
+      // Inject custom OpenGraph tags
+      html = injectMetaTags(html, audit, requestUrl);
+
+      // If in development mode, apply Vite HTML transformation
+      if (process.env.NODE_ENV !== 'production' && viteInstance) {
+        html = await viteInstance.transformIndexHtml(req.originalUrl, html);
+      }
+
+      return res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+    } catch (err) {
+      console.error('[OpenGraph Meta Injection Error]', err);
+      next(err);
+    }
+  });
+
   // Serve Frontend Bundle with Vite in development, or Express.static in production
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, 'dist')));
@@ -281,12 +366,12 @@ async function startServer() {
   } else {
     // Dynamic import to avoid dev dependencies compiling in production
     const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
+    viteInstance = await createViteServer({
       server: { middlewareMode: true },
       appType: 'custom',
     });
     
-    app.use(vite.middlewares);
+    app.use(viteInstance.middlewares);
     
     app.use('*', async (req, res, next) => {
       const url = req.originalUrl;
@@ -295,10 +380,10 @@ async function startServer() {
           path.resolve(__dirname, 'index.html'),
           'utf-8'
         );
-        template = await vite.transformIndexHtml(url, template);
+        template = await viteInstance.transformIndexHtml(url, template);
         res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
       } catch (e) {
-        vite.ssrFixStacktrace(e as Error);
+        if (viteInstance) viteInstance.ssrFixStacktrace(e as Error);
         next(e);
       }
     });

@@ -1,10 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Dynamically extract Supabase URL and Anon key based on Node vs Vite environments
-const supabaseUrl = 
+const rawSupabaseUrl = 
   (typeof process !== 'undefined' && process.env?.SUPABASE_URL) || 
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) || 
   '';
+
+// Sanitize URL to strip trailing /rest/v1/ or slashes
+const supabaseUrl = rawSupabaseUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
 
 const supabaseAnonKey = 
   (typeof process !== 'undefined' && process.env?.SUPABASE_ANON_KEY) || 

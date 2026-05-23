@@ -5,15 +5,18 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   options: { value: string; label: string }[] | string[];
 }
 
-export function Select({ label, options, className = '', ...props }: SelectProps) {
+export function Select({ label, options, className = '', id, ...props }: SelectProps) {
+  const generatedId = React.useId();
+  const selectId = id || generatedId;
   return (
     <div className="space-y-1 w-full">
       {label && (
-        <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+        <label htmlFor={selectId} className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider">
           {label}
         </label>
       )}
       <select
+        id={selectId}
         className={`w-full bg-black border border-white/10 rounded-xl px-2 py-2 text-white focus:border-purple-500 focus:outline-none text-xs transition-colors font-sans cursor-pointer ${className}`}
         {...props}
       >
