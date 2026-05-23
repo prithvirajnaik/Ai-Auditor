@@ -5,6 +5,7 @@ import { AI_TOOLS_PRICING } from '../../lib/pricing';
 import { runAuditAnalysis } from '../../lib/auditEngine';
 import ProfileForm from './ProfileForm';
 import SubscriptionCard from './SubscriptionCard';
+import { useAuth } from '../../hooks/useAuth';
 
 interface AuditFormProps {
   onAuditCompleted: (report: any) => void;
@@ -21,6 +22,7 @@ const DEFAULT_PRESET_SUBSCRIPTIONS: SubscriptionItem[] = [
 ];
 
 export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFormProps) {
+  const { user } = useAuth();
   // Global fields with LocalStorage integration
   const [companyName, setCompanyName] = useState(() => {
     return localStorage.getItem('autoaudit_company_name') || 'Acme Rockets Inc.';
@@ -184,7 +186,8 @@ export default function AuditForm({ onAuditCompleted, onNavigateHome }: AuditFor
                 domain_name: domainName.trim(),
                 team_size: teamSize,
                 use_case: primaryUseCase,
-                subscriptions
+                subscriptions,
+                user_id: user?.id || null
               })
             });
 

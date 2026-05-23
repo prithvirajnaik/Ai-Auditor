@@ -51,7 +51,7 @@ async function startServer() {
    */
   app.post('/api/audits', async (req, res) => {
     try {
-      const { company_name, domain_name, team_size, use_case, subscriptions } = req.body;
+      const { company_name, domain_name, team_size, use_case, subscriptions, user_id } = req.body;
 
       if (!company_name || !domain_name || !team_size || !use_case) {
         return res.status(400).json({ error: 'Missing required parameters.' });
@@ -97,6 +97,7 @@ async function startServer() {
         },
         monthly_savings: calculatedReport.potentialMonthlySavings,
         annual_savings: calculatedReport.potentialAnnualSavings,
+        user_id: user_id || null,
       });
 
       const reportWithId: any = {

@@ -67,7 +67,7 @@ export default function Header({ currentUser, activePage, setActivePage, onNavig
           </button>
         ) : (
           <button
-            onClick={() => setActivePage('auth')}
+            onClick={() => setActivePage('login')}
             className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 border border-white/10 rounded-xl text-xs font-semibold transition-colors cursor-pointer focus:outline-none"
           >
             Access Portal

@@ -15,6 +15,7 @@ export interface AuditRecord {
   audit_results: any;
   monthly_savings: number;
   annual_savings: number;
+  user_id?: string | null;
 }
 
 /**
@@ -36,6 +37,7 @@ export async function saveAudit(record: AuditRecord): Promise<AuditRecord> {
             audit_results: record.audit_results,
             monthly_savings: record.monthly_savings,
             annual_savings: record.annual_savings,
+            user_id: record.user_id || null,
           },
         ])
         .select()

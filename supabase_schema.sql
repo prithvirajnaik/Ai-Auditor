@@ -68,3 +68,40 @@ CREATE POLICY "Allow public insert to leads" ON leads
 CREATE POLICY "Allow public select from leads" ON leads
   FOR SELECT TO anon, authenticated
   USING (true);
+
+-- ==========================================
+-- PROFILES TABLE AND AUDIT OWNERSHIP
+-- ==========================================
+
+-- Profiles table: Stores custom company metadata linked to Supabase Auth
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_name VARCHAR(255) NOT NULL,
+  role VARCHAR(255),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Enable RLS for Profiles
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies for profiles if they already exist
+DROP POLICY IF EXISTS "Allow user to insert their own profile" ON profiles;
+DROP POLICY IF EXISTS "Allow user to select their own profile" ON profiles;
+DROP POLICY IF EXISTS "Allow user to update their own profile" ON profiles;
+
+-- Profiles Table RLS Policies
+CREATE POLICY "Allow user to insert their own profile" ON profiles
+  FOR INSERT TO authenticated
+  WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Allow user to select their own profile" ON profiles
+  FOR SELECT TO authenticated
+  USING (auth.uid() = id);
+
+CREATE POLICY "Allow user to update their own profile" ON profiles
+  FOR UPDATE TO authenticated
+  USING (auth.uid() = id);
+
+-- Link audits to authenticated users (allow public free runs, or saved history tracking)
+ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+

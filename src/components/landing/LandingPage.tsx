@@ -10,15 +10,16 @@ import { FAQS, TESTIMONIALS } from '../../data/mockData';
 interface LandingPageProps {
   onNavigate: (page: string) => void;
   onSelectDemoReport: () => void;
+  userLoggedIn: boolean;
 }
 
-export default function LandingPage({ onNavigate, onSelectDemoReport }: LandingPageProps) {
+export default function LandingPage({ onNavigate, onSelectDemoReport, userLoggedIn }: LandingPageProps) {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [quickAuditInput, setQuickAuditInput] = useState('');
 
   const handleQuickSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onNavigate('audit-form');
+    onNavigate(userLoggedIn ? 'audit-form' : 'login');
   };
 
   return (
@@ -44,7 +45,7 @@ export default function LandingPage({ onNavigate, onSelectDemoReport }: LandingP
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10 w-full max-w-md mx-auto">
           <button
-            onClick={() => onNavigate('audit-form')}
+            onClick={() => onNavigate(userLoggedIn ? 'audit-form' : 'login')}
             className="bg-gradient-to-r from-purple-600 to-blue-600 hover:shadow-[0_0_25px_rgba(139,92,246,0.5)] text-white px-8 py-4 rounded-xl font-bold transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2 cursor-pointer font-sans"
           >
             Run Stack Audit

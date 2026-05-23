@@ -17,7 +17,8 @@ import {
   Sliders,
   HelpCircle,
   Menu,
-  X
+  X,
+  History
 } from 'lucide-react';
 import { AuditReport } from './types';
 import { DEFAULT_MOCK_REPORT } from './data/mockData';
@@ -27,27 +28,111 @@ import Dashboard from './components/dashboard/Dashboard';
 import ShareableReport from './components/dashboard/ShareableReport';
 import Analytics from './components/dashboard/Analytics';
 import Settings from './components/Settings';
-import AuthPages from './components/AuthPages';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import AuditHistory from './components/dashboard/AuditHistory';
 import PublicReport from './components/dashboard/PublicReport';
+import { useAuth } from './hooks/useAuth';
+import { supabase, isSupabaseConfigured } from './lib/supabase';
 
 import { useLocalStorage } from './hooks/useLocalStorage';
 
 export default function App() {
+  const { user, profile, loading, signOut } = useAuth();
   const [activePage, setActivePage] = useLocalStorage<string>('autoaudit_active_page', 'landing');
-  const [currentUser, setCurrentUser] = useLocalStorage<string | null>('autoaudit_current_user', null);
   const [report, setReport] = useLocalStorage<AuditReport>('autoaudit_report', DEFAULT_MOCK_REPORT);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [publicReportId, setPublicReportId] = useState<string | null>(null);
+  const [guestViewAllowed, setGuestViewAllowed] = useState(false);
 
-  // Parse path on initial mount for routing support
+  // Sync pathname to state on load and support custom URLs
   useEffect(() => {
     const path = window.location.pathname;
     const match = path.match(/^\/report\/([^\/]+)/);
     if (match) {
       setPublicReportId(match[1]);
       setActivePage('public-report');
+    } else if (path === '/login') {
+      setActivePage('login');
+    } else if (path === '/signup') {
+      setActivePage('signup');
+    } else if (path === '/dashboard') {
+      setActivePage('results-dashboard');
+    } else if (path === '/history') {
+      setActivePage('audit-history');
+    } else if (path === '/audit-form') {
+      setActivePage('audit-form');
     }
   }, []);
+
+  // Popstate event listener for browser navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      const match = path.match(/^\/report\/([^\/]+)/);
+      if (match) {
+        setPublicReportId(match[1]);
+        setActivePage('public-report');
+      } else if (path === '/login') {
+        setActivePage('login');
+      } else if (path === '/signup') {
+        setActivePage('signup');
+      } else if (path === '/dashboard') {
+        setActivePage('results-dashboard');
+      } else if (path === '/history') {
+        setActivePage('audit-history');
+      } else if (path === '/audit-form') {
+        setActivePage('audit-form');
+      } else if (path === '/analytics') {
+        setActivePage('analytics');
+      } else if (path === '/shareable-report') {
+        setActivePage('shareable-report');
+      } else if (path === '/settings') {
+        setActivePage('settings');
+      } else {
+        setActivePage('landing');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Sync active page to window pathname
+  useEffect(() => {
+    const currentPath = window.location.pathname;
+    let targetPath = '/';
+    if (activePage === 'results-dashboard') targetPath = '/dashboard';
+    else if (activePage === 'login') targetPath = '/login';
+    else if (activePage === 'signup') targetPath = '/signup';
+    else if (activePage === 'audit-form') targetPath = '/audit-form';
+    else if (activePage === 'analytics') targetPath = '/analytics';
+    else if (activePage === 'shareable-report') targetPath = '/shareable-report';
+    else if (activePage === 'settings') targetPath = '/settings';
+    else if (activePage === 'public-report' && publicReportId) targetPath = `/report/${publicReportId}`;
+    else if (activePage === 'audit-history') targetPath = '/history';
+
+    if (currentPath !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  }, [activePage, publicReportId]);
+
+  // Route protection / Redirect Guard
+  useEffect(() => {
+    const protectedPages = [
+      'results-dashboard',
+      'analytics',
+      'shareable-report',
+      'settings',
+      'audit-history'
+    ];
+    if (!loading && !user && protectedPages.includes(activePage)) {
+      // Allow guest to see scorecard/analytics/shareable if they just generated a report
+      if ((activePage === 'results-dashboard' || activePage === 'analytics' || activePage === 'shareable-report') && guestViewAllowed) {
+        return;
+      }
+      setActivePage('login');
+    }
+  }, [activePage, user, loading, guestViewAllowed]);
 
   // Auto-scroll to top on screen transition
   useEffect(() => {
@@ -55,23 +140,84 @@ export default function App() {
     setMobileMenuOpen(false);
   }, [activePage]);
 
-  const handleLoginCompleted = (email: string) => {
-    setCurrentUser(email);
-    setActivePage('results-dashboard');
+  const handleLoginCompleted = async () => {
+    setGuestViewAllowed(false);
+
+    // If Supabase is configured, check if this user has any saved audits
+    if (isSupabaseConfigured) {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const currentUserId = sessionData?.session?.user?.id;
+
+        if (currentUserId) {
+          const { data, error } = await supabase
+            .from('audits')
+            .select('*')
+            .eq('user_id', currentUserId)
+            .order('created_at', { ascending: false });
+
+          if (!error && data && data.length > 0) {
+            // Returning user with existing reports: load their latest report and take to dashboard
+            const audit = data[0];
+            const reconstructedReport = {
+              id: audit.id,
+              publicId: audit.public_id,
+              companyName: audit.company_name,
+              domainName: audit.domain_name,
+              teamSize: audit.team_size,
+              primaryUseCase: audit.use_case,
+              auditDate: new Date(audit.created_at).toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
+              currentSpendMonthly: Number(audit.monthly_savings) + Number(audit.audit_results?.optimizedSpendMonthly || 0),
+              optimizedSpendMonthly: Number(audit.audit_results?.optimizedSpendMonthly || 0),
+              potentialMonthlySavings: Number(audit.monthly_savings),
+              potentialAnnualSavings: Number(audit.annual_savings),
+              duplicateToolsCount: audit.audit_results?.recommendations?.filter((r: any) => r.type === 'remove_redundant' || r.type === 'consolidate').length || 0,
+              inactiveSeatsCount: audit.audit_results?.recommendations?.filter((r: any) => r.type === 'ghost_seats').length * 2 || 0,
+              subscriptionsAnalyzed: audit.subscriptions || [],
+              recommendations: audit.audit_results?.recommendations || [],
+              teamMetrics: audit.audit_results?.teamMetrics || [],
+              aiSummary: audit.audit_results?.aiSummary || 'AI Overspend Analysis report saved in workspace history.'
+            };
+            setReport(reconstructedReport);
+            setActivePage('results-dashboard');
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('[App] Error checking returning user history:', err);
+      }
+    } else {
+      // Mock history check
+      const mockSession = localStorage.getItem('autoaudit_mock_session');
+      if (mockSession) {
+        const parsed = JSON.parse(mockSession);
+        // If it's a demo mock session, take them directly to the results-dashboard
+        if (parsed.user?.email?.includes('demo')) {
+          setActivePage('results-dashboard');
+          return;
+        }
+      }
+    }
+
+    // Default flow: new account, take them to the audit form
+    setActivePage('audit-form');
   };
 
   const handleAuditCompleted = (newReport: AuditReport) => {
     setReport(newReport);
+    setGuestViewAllowed(true); // Allow them to see results without login
     setActivePage('results-dashboard');
   };
 
   const handleSelectDemoReport = () => {
     setReport(DEFAULT_MOCK_REPORT);
+    setGuestViewAllowed(true);
     setActivePage('results-dashboard');
   };
 
-  const logout = () => {
-    setCurrentUser(null);
+  const logout = async () => {
+    setGuestViewAllowed(false);
+    await signOut();
     setActivePage('landing');
   };
 
@@ -80,7 +226,8 @@ export default function App() {
     'results-dashboard',
     'analytics',
     'shareable-report',
-    'settings'
+    'settings',
+    'audit-history'
   ].includes(activePage);
 
   return (
@@ -127,7 +274,7 @@ export default function App() {
           </nav>
 
           <div className="flex items-center gap-3">
-            {currentUser ? (
+            {user ? (
               <button
                 onClick={() => setActivePage('results-dashboard')}
                 className="bg-purple-950/40 border border-purple-500/30 text-purple-300 px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer focus:outline-none"
@@ -136,14 +283,14 @@ export default function App() {
               </button>
             ) : (
               <button
-                onClick={() => setActivePage('auth')}
+                onClick={() => setActivePage('login')}
                 className="bg-white/5 hover:bg-white/10 text-white px-4 py-2 border border-white/10 rounded-xl text-xs font-semibold transition-colors cursor-pointer focus:outline-none"
               >
                 Access Portal
               </button>
             )}
-            <button
-              onClick={() => setActivePage('audit-form')}
+             <button
+              onClick={() => setActivePage(user ? 'audit-form' : 'login')}
               className="bg-gradient-to-r from-purple-600 to-blue-500 text-white px-5 py-2 rounded-xl text-xs font-bold transition-shadow cursor-pointer focus:outline-none"
             >
               Run Audit
@@ -202,6 +349,20 @@ export default function App() {
                   <Sparkles className="w-4 h-4 text-cyan-400 fill-cyan-400/10" />
                   <span>Update Stack</span>
                 </button>
+
+                {user && (
+                  <button
+                    onClick={() => setActivePage('audit-history')}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-semibold transition-all cursor-pointer focus:outline-none ${
+                      activePage === 'audit-history'
+                        ? 'bg-purple-950/35 border border-purple-500/20 text-purple-300'
+                        : 'text-gray-400 hover:bg-white/[0.02] hover:text-white'
+                    }`}
+                  >
+                    <History className="w-4 h-4 text-purple-400" />
+                    <span>Saved Audits</span>
+                  </button>
+                )}
 
                 <button
                   onClick={() => setActivePage('analytics')}
@@ -264,11 +425,11 @@ export default function App() {
             <div className="p-6 border-t border-white/5 space-y-4">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-cyan-950/30 border border-cyan-500/30 flex items-center justify-center font-bold text-xs text-cyan-300">
-                  {currentUser ? currentUser.substring(0, 2).toUpperCase() : 'GS'}
+                  {user ? (profile?.company_name || user.email || 'US').substring(0, 2).toUpperCase() : 'GS'}
                 </div>
                 <div className="leading-tight overflow-hidden text-ellipsis whitespace-nowrap flex-1">
-                  <h5 className="font-bold text-white text-xs">{report.companyName}</h5>
-                  <p className="text-[9px] text-gray-500 truncate">{currentUser || 'guest@autoaudit.ai'}</p>
+                  <h5 className="font-bold text-white text-xs">{profile?.company_name || report.companyName}</h5>
+                  <p className="text-[9px] text-gray-500 truncate">{user?.email || 'guest@autoaudit.ai'}</p>
                 </div>
               </div>
 
@@ -289,6 +450,7 @@ export default function App() {
             <LandingPage
               onNavigate={setActivePage}
               onSelectDemoReport={handleSelectDemoReport}
+              userLoggedIn={!!user}
             />
           )}
 
@@ -338,10 +500,29 @@ export default function App() {
             />
           )}
 
-          {activePage === 'auth' && (
-            <AuthPages
+          {activePage === 'login' && (
+            <Login
               onLoginCompleted={handleLoginCompleted}
               onNavigateHome={() => setActivePage('landing')}
+              onNavigateSignup={() => setActivePage('signup')}
+            />
+          )}
+
+          {activePage === 'signup' && (
+            <Signup
+              onSignupCompleted={handleLoginCompleted}
+              onNavigateHome={() => setActivePage('landing')}
+              onNavigateLogin={() => setActivePage('login')}
+            />
+          )}
+
+          {activePage === 'audit-history' && (
+            <AuditHistory
+              onLoadReport={(rep) => {
+                setReport(rep);
+                setActivePage('results-dashboard');
+              }}
+              onNavigateBack={() => setActivePage('results-dashboard')}
             />
           )}
         </main>
