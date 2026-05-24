@@ -94,6 +94,9 @@ async function startServer() {
           recommendations: calculatedReport.recommendations,
           teamMetrics: calculatedReport.teamMetrics,
           optimizedSpendMonthly: calculatedReport.optimizedSpendMonthly,
+          aiSummary: aiSummary,
+          duplicateToolsCount: calculatedReport.duplicateToolsCount,
+          inactiveSeatsCount: calculatedReport.inactiveSeatsCount,
         },
         monthly_savings: calculatedReport.potentialMonthlySavings,
         annual_savings: calculatedReport.potentialAnnualSavings,
@@ -182,6 +185,8 @@ async function startServer() {
         optimizedSpendMonthly: Number(results.optimizedSpendMonthly || 0),
         potentialMonthlySavings: Number(audit.monthly_savings),
         potentialAnnualSavings: Number(audit.annual_savings),
+        duplicateToolsCount: results.duplicateToolsCount ?? 0,
+        inactiveSeatsCount: results.inactiveSeatsCount ?? 0,
         subscriptionsAnalyzed: sanitizedSubscriptions,
         recommendations: sanitizedRecommendations,
         teamMetrics: sanitizedTeamMetrics,
@@ -387,12 +392,17 @@ async function startServer() {
     });
   }
 
+  if (process.env.VERCEL) {
+    return app;
+  }
+
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`🚀 Auto Audit MVP Server initialized on http://localhost:${PORT}`);
     console.log(`==================================================\n`);
   });
+  return app;
 }
 
-startServer();
+export const appPromise = startServer();

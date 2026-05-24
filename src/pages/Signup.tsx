@@ -53,6 +53,12 @@ export default function Signup({ onSignupCompleted, onNavigateHome, onNavigateLo
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          data: {
+            company_name: companyName.trim(),
+            role: role.trim() || null,
+          }
+        }
       });
 
       if (error) throw error;
@@ -61,17 +67,27 @@ export default function Signup({ onSignupCompleted, onNavigateHome, onNavigateLo
         throw new Error('Failed to retrieve user session during creation.');
       }
 
-      // 2. Create the associated profile record linked via user.id
-      const { error: profileError } = await supabase.from('profiles').insert([
-        {
-          id: data.user.id,
-          company_name: companyName.trim(),
-          role: role.trim() || null,
-        },
-      ]);
+      // 2. Create the associated profile record linked via user.id (fallback if database trigger is not configured)
+      try {
+        const { error: profileError } = await supabase.from('profiles').insert([
+          {
+            id: data.user.id,
+            company_name: companyName.trim(),
+            role: role.trim() || null,
+          },
+        ]);
 
-      if (profileError) {
-        throw profileError;
+        if (profileError) {
+          // If it fails because of duplicate key (trigger already created it) or policy error (email verification enabled)
+          const isDuplicate = profileError.message?.toLowerCase().includes('duplicate') || profileError.code === '23505';
+          const isRLS = profileError.message?.toLowerCase().includes('row-level security') || profileError.message?.toLowerCase().includes('policy') || profileError.code === '42501';
+          
+          if (!isDuplicate && !isRLS) {
+            throw profileError;
+          }
+        }
+      } catch (profileErr) {
+        console.log('[Supabase Signup] Profile creation handled by trigger or skipped:', profileErr);
       }
 
       onSignupCompleted();

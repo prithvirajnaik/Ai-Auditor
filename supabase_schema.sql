@@ -105,3 +105,27 @@ CREATE POLICY "Allow user to update their own profile" ON profiles
 -- Link audits to authenticated users (allow public free runs, or saved history tracking)
 ALTER TABLE audits ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
 
+-- ==========================================
+-- AUTOMATIC PROFILE PROVISIONING TRIGGER
+-- ==========================================
+-- This function automatically creates a profile when a new auth.users account is created.
+-- It extracts metadata parameters passed from the client-side signUp options.data payload.
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, company_name, role)
+  VALUES (
+    new.id,
+    COALESCE(new.raw_user_meta_data->>'company_name', 'My Startup'),
+    COALESCE(new.raw_user_meta_data->>'role', 'Member')
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger executing the provisioning helper after auth.users insertion
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+

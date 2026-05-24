@@ -63,3 +63,4 @@ Need to improve testing coverage and start validating pricing data against offic
 - Deploy the application to a staging/production hosting provider.
 - Write integration tests for the new Supabase Auth contexts, session hook transitions, and route guards.
 - Finalize documentation files: PRICING_DATA.md, TESTS.md, and ARCHITECTURE.md.
+- Finalize MVP features
