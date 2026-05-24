@@ -64,3 +64,27 @@ Need to improve testing coverage and start validating pricing data against offic
 - Write integration tests for the new Supabase Auth contexts, session hook transitions, and route guards.
 - Finalize documentation files: PRICING_DATA.md, TESTS.md, and ARCHITECTURE.md.
 - Finalize MVP features
+
+## Day 3 — 2026-05-24
+
+**Hours worked:** 4
+
+**What I did:**  
+- Solved database report serialization issues by saving `aiSummary`, `duplicateToolsCount`, and `inactiveSeatsCount` in the `audit_results` JSONB column upon creation.
+- Fixed the public report dashboard data rendering and user history scorecard view by reconstructing metric states directly from database results instead of failing client-side heuristics.
+- Resolved a critical Supabase auth registration hazard. Established a PostgreSQL database trigger to automate profile provisioning upon user sign-up, ensuring registration succeeds even when email confirmation is enabled.
+- Configured the application for zero-cost hosting on Vercel: mapped routing and static SPA builds in `vercel.json`, created serverless wrapper `api/index.ts`, and updated `server.ts` to export the Express app for module loaders.
+- Ran local Vite production build and Vitest suite successfully to confirm zero type compiler or test failures.
+
+**What I learned:**  
+- Learned to structure monorepo-style Express + Vite applications for Vercel Serverless environments.
+- Gained understanding of secure database-driven user profile provisioning using Postgres triggers to circumvent client-side RLS limitations.
+
+**Blockers / what I'm stuck on:**  
+Trying to figure out a better way of handling calculations.
+
+
+**Plan for tomorrow:**  
+- End to End testing and cleanup
+- Add more deterministic metrics and tool categories
+- improve the UX and UI
