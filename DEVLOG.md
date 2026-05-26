@@ -88,3 +88,12 @@ Trying to figure out a better way of handling calculations.
 - End to End testing and cleanup
 - Add more deterministic metrics and tool categories
 - improve the UX and UI
+
+## Day - 2026-05-25 to 2026-06-26 
+**Hours worked:** 0
+
+**What I did:**  
+- Got occupied in my exams, so unable to do much.
+
+**Plan for tomorrow:**  
+- tommorow I have my minor project review, If after that time is still there will polish the project
